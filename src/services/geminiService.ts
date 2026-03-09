@@ -1,9 +1,11 @@
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 import { AppraisalInput } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+const API_KEY = (window as any).env?.GEMINI_API_KEY || "AIzaSyATeUUKvv6z_XhD8c2eVdd5HqG2m3ez_34";
 
 export async function extractRiskIndicators(input: { companyName: string, industry: string, financialData: string, text: string }) {
+  console.log("API Key being used:", API_KEY.substring(0, 5) + "...");
+  const ai = new GoogleGenAI({ apiKey: API_KEY });
   const prompt = `
     Target Entity: ${input.companyName}
     Industry: ${input.industry}
@@ -25,6 +27,8 @@ export async function extractRiskIndicators(input: { companyName: string, indust
 }
 
 export async function generateProfessionalCAM(input: AppraisalInput) {
+  console.log("API Key being used:", API_KEY.substring(0, 5) + "...");
+  const ai = new GoogleGenAI({ apiKey: API_KEY });
   const prompt = `
     Act as a Senior Credit Officer. Based on the 5Cs of Credit (Character, Capacity, Capital, Collateral, Conditions), analyze the provided data and output a professional Credit Appraisal Memo (CAM) with a final Risk Score and a Recommendation (Approve/Decline).
     
@@ -88,6 +92,8 @@ export async function generateProfessionalCAM(input: AppraisalInput) {
 }
 
 export async function generateCreditAppraisal(input: AppraisalInput) {
+  console.log("API Key being used:", API_KEY.substring(0, 5) + "...");
+  const ai = new GoogleGenAI({ apiKey: API_KEY });
   const prompt = `
     You are a Senior AI Engineer, FinTech Architect, and Banking Credit Analyst.
     Your task is to perform a complete corporate credit appraisal for "Intelli-Credit: Next-Gen Corporate Credit Appraisal".

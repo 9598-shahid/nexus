@@ -335,6 +335,7 @@ const NewAppraisalForm = ({ onSubmit, isGenerating }: { onSubmit: (data: Apprais
   const [isAiScanning, setIsAiScanning] = useState(false);
   const [ocrProgress, setOcrProgress] = useState(0);
   const [contextA, setContextA] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState<AppraisalInput>({
     companyName: '',
     industry: '',
@@ -376,7 +377,7 @@ const NewAppraisalForm = ({ onSubmit, isGenerating }: { onSubmit: (data: Apprais
       }));
     } catch (err) {
       console.error('AI Scan Error:', err);
-      alert('AI failed to analyze the document.');
+      setError('RED FLAG: Document analysis engine offline. Verify API connectivity.');
     } finally {
       setIsAiScanning(false);
     }
@@ -396,7 +397,7 @@ const NewAppraisalForm = ({ onSubmit, isGenerating }: { onSubmit: (data: Apprais
       } else if (file.type.startsWith('image/')) {
         extractedText = await processImage(file);
       } else {
-        alert('Unsupported file type. Please upload a PDF or Image.');
+        setError('RED FLAG: Unsupported file type. Please upload a PDF or Image.');
         return;
       }
       
@@ -405,7 +406,7 @@ const NewAppraisalForm = ({ onSubmit, isGenerating }: { onSubmit: (data: Apprais
       
     } catch (err) {
       console.error('OCR Error:', err);
-      alert('Failed to extract text from document.');
+      setError('RED FLAG: Failed to extract text from document.');
     } finally {
       setIsOcrLoading(false);
       setOcrProgress(0);
@@ -489,6 +490,18 @@ const NewAppraisalForm = ({ onSubmit, isGenerating }: { onSubmit: (data: Apprais
       <div className="glass-panel p-10 rounded-[3rem] relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-cyber-indigo/5 rounded-full -translate-y-1/2 translate-x-1/2 -z-10 blur-3xl" />
         
+        {error && (
+          <motion.div 
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-8 p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl flex items-center gap-3 text-rose-500"
+          >
+            <AlertTriangle size={18} />
+            <p className="text-xs font-black uppercase tracking-widest">{error}</p>
+            <button onClick={() => setError(null)} className="ml-auto text-[10px] font-bold underline">Dismiss</button>
+          </motion.div>
+        )}
+
         <AnimatePresence mode="wait">
           {step === 1 && (
             <motion.div 
@@ -1013,6 +1026,7 @@ export default function App() {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [selectedAppraisal, setSelectedAppraisal] = useState<Appraisal | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [globalError, setGlobalError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchAppraisals();
@@ -1080,7 +1094,7 @@ export default function App() {
       setActiveTab('dashboard');
     } catch (err) {
       console.error('Failed to generate appraisal', err);
-      alert('Failed to generate appraisal. Please check your API key and try again.');
+      setGlobalError('RED FLAG: AI Intelligence synthesis failed. Please verify API configuration and input data integrity.');
     } finally {
       setIsGenerating(false);
     }
@@ -1105,6 +1119,27 @@ export default function App() {
       }} />
       
       <main className="ml-72 p-16 max-w-[1600px] mx-auto">
+        {globalError && (
+          <motion.div 
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-12 p-6 bg-rose-500/10 border border-rose-500/20 rounded-[2rem] flex items-center gap-4 text-rose-500 shadow-xl shadow-rose-500/5"
+          >
+            <div className="p-3 bg-rose-500 text-white rounded-xl">
+              <AlertTriangle size={24} />
+            </div>
+            <div>
+              <p className="font-black uppercase tracking-[0.2em] text-xs mb-1">System Alert</p>
+              <p className="font-bold text-sm">{globalError}</p>
+            </div>
+            <button 
+              onClick={() => setGlobalError(null)} 
+              className="ml-auto px-4 py-2 bg-rose-500/20 hover:bg-rose-500/30 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+            >
+              Clear Flag
+            </button>
+          </motion.div>
+        )}
         <AnimatePresence mode="wait">
           {selectedAppraisal ? (
             <motion.div
