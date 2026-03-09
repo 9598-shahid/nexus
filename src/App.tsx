@@ -44,7 +44,7 @@ import {
   ResponsiveContainer 
 } from 'recharts';
 import { Appraisal, AppraisalInput, AuditLog } from './types';
-import { generateCreditAppraisal } from './services/geminiService';
+import { generateCreditAppraisal, extractRiskIndicators, generateProfessionalCAM } from './services/geminiService';
 import { Logo } from './components/Logo';
 
 // Configure PDF.js worker
@@ -332,7 +332,9 @@ const Dashboard = ({ appraisals, onView, onDelete }: { appraisals: Appraisal[], 
 const NewAppraisalForm = ({ onSubmit, isGenerating }: { onSubmit: (data: AppraisalInput) => void, isGenerating: boolean }) => {
   const [step, setStep] = useState(1);
   const [isOcrLoading, setIsOcrLoading] = useState(false);
+  const [isAiScanning, setIsAiScanning] = useState(false);
   const [ocrProgress, setOcrProgress] = useState(0);
+  const [contextA, setContextA] = useState<any>(null);
   const [formData, setFormData] = useState<AppraisalInput>({
     companyName: '',
     industry: '',
@@ -342,11 +344,42 @@ const NewAppraisalForm = ({ onSubmit, isGenerating }: { onSubmit: (data: Apprais
     dueDiligence: ''
   });
 
-  const nextStep = () => setStep(s => s + 1);
+  const nextStep = () => {
+    if (step === 1) {
+      setContextA({
+        companyName: formData.companyName,
+        industry: formData.industry,
+        financialData: formData.financialData
+      });
+    }
+    setStep(s => s + 1);
+  };
   const prevStep = () => setStep(s => s - 1);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleScanAI = async (text: string) => {
+    if (!text) return;
+    setIsAiScanning(true);
+    try {
+      const summary = await extractRiskIndicators({
+        companyName: formData.companyName,
+        industry: formData.industry,
+        financialData: formData.financialData,
+        text: text
+      });
+      setFormData(prev => ({
+        ...prev,
+        unstructuredDocs: summary || ''
+      }));
+    } catch (err) {
+      console.error('AI Scan Error:', err);
+      alert('AI failed to analyze the document.');
+    } finally {
+      setIsAiScanning(false);
+    }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -357,13 +390,19 @@ const NewAppraisalForm = ({ onSubmit, isGenerating }: { onSubmit: (data: Apprais
     setOcrProgress(0);
 
     try {
+      let extractedText = '';
       if (file.type === 'application/pdf') {
-        await processPdf(file);
+        extractedText = await processPdf(file);
       } else if (file.type.startsWith('image/')) {
-        await processImage(file);
+        extractedText = await processImage(file);
       } else {
         alert('Unsupported file type. Please upload a PDF or Image.');
+        return;
       }
+      
+      // After OCR, trigger AI Scan
+      await handleScanAI(extractedText);
+      
     } catch (err) {
       console.error('OCR Error:', err);
       alert('Failed to extract text from document.');
@@ -373,7 +412,7 @@ const NewAppraisalForm = ({ onSubmit, isGenerating }: { onSubmit: (data: Apprais
     }
   };
 
-  const processImage = async (file: File) => {
+  const processImage = async (file: File): Promise<string> => {
     const result = await Tesseract.recognize(file, 'eng', {
       logger: m => {
         if (m.status === 'recognizing text') {
@@ -381,14 +420,10 @@ const NewAppraisalForm = ({ onSubmit, isGenerating }: { onSubmit: (data: Apprais
         }
       }
     });
-    
-    setFormData(prev => ({
-      ...prev,
-      unstructuredDocs: prev.unstructuredDocs + '\n\n--- Extracted from Image ---\n' + result.data.text
-    }));
+    return result.data.text;
   };
 
-  const processPdf = async (file: File) => {
+  const processPdf = async (file: File): Promise<string> => {
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     let fullText = '';
@@ -416,11 +451,7 @@ const NewAppraisalForm = ({ onSubmit, isGenerating }: { onSubmit: (data: Apprais
         }
       }
     }
-
-    setFormData(prev => ({
-      ...prev,
-      unstructuredDocs: prev.unstructuredDocs + '\n\n--- Extracted from PDF ---\n' + fullText
-    }));
+    return fullText;
   };
 
   return (
@@ -553,7 +584,7 @@ const NewAppraisalForm = ({ onSubmit, isGenerating }: { onSubmit: (data: Apprais
                   <label 
                     htmlFor="ocr-upload"
                     className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest cursor-pointer transition-all ${
-                      isOcrLoading ? 'bg-white/5 text-slate-600' : 'bg-cyber-indigo/10 text-cyber-indigo hover:bg-cyber-indigo hover:text-white shadow-sm'
+                      isOcrLoading || isAiScanning ? 'bg-white/5 text-slate-600' : 'bg-cyber-indigo/10 text-cyber-indigo hover:bg-cyber-indigo hover:text-white shadow-sm'
                     }`}
                   >
                     {isOcrLoading ? (
@@ -561,10 +592,15 @@ const NewAppraisalForm = ({ onSubmit, isGenerating }: { onSubmit: (data: Apprais
                         <Loader2 size={16} className="animate-spin" />
                         Scanning {ocrProgress}%
                       </>
+                    ) : isAiScanning ? (
+                      <>
+                        <Loader2 size={16} className="animate-spin" />
+                        AI Analyzing...
+                      </>
                     ) : (
                       <>
                         <Scan size={16} />
-                        Scan PDF/Image (OCR)
+                        Scan PDF/Image (AI)
                       </>
                     )}
                   </label>
@@ -1017,7 +1053,7 @@ export default function App() {
   const handleCreateAppraisal = async (input: AppraisalInput) => {
     setIsGenerating(true);
     try {
-      const result = await generateCreditAppraisal(input);
+      const result = await generateProfessionalCAM(input);
       
       const newAppraisal: Appraisal = {
         id: Math.random().toString(36).substr(2, 9),

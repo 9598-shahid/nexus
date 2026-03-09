@@ -3,6 +3,90 @@ import { AppraisalInput } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
+export async function extractRiskIndicators(input: { companyName: string, industry: string, financialData: string, text: string }) {
+  const prompt = `
+    Target Entity: ${input.companyName}
+    Industry: ${input.industry}
+    Financial Data: ${input.financialData}
+    
+    Document Text:
+    ${input.text}
+    
+    Task: Extract key risk indicators, management sentiment, and any red flags from this text.
+    Provide a concise summary that can be used for credit appraisal.
+  `;
+
+  const response = await ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: [{ parts: [{ text: prompt }] }],
+  });
+
+  return response.text;
+}
+
+export async function generateProfessionalCAM(input: AppraisalInput) {
+  const prompt = `
+    Act as a Senior Credit Officer. Based on the 5Cs of Credit (Character, Capacity, Capital, Collateral, Conditions), analyze the provided data and output a professional Credit Appraisal Memo (CAM) with a final Risk Score and a Recommendation (Approve/Decline).
+    
+    COMPANY NAME: ${input.companyName}
+    INDUSTRY: ${input.industry}
+    
+    DATA COLLECTED:
+    - Pillar 1 (Financials): ${input.financialData}
+    - Pillar 2 (Research/Docs): ${input.unstructuredDocs}
+    - Pillar 3 (External/DD): ${input.externalIntelligence} ${input.dueDiligence}
+    
+    OUTPUT FORMAT:
+    Return a JSON object with:
+    {
+      "risk_score": number (0-100),
+      "recommendation": "Approve" | "Reject",
+      "loan_limit": "string",
+      "interest_rate": "string",
+      "risk_categories": {
+        "financial": number,
+        "legal": number,
+        "sector": number,
+        "operational": number,
+        "management": number
+      },
+      "cam_markdown": "Full professional CAM in Markdown format."
+    }
+  `;
+
+  const response = await ai.models.generateContent({
+    model: "gemini-3.1-pro-preview",
+    contents: [{ parts: [{ text: prompt }] }],
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          risk_score: { type: Type.NUMBER },
+          recommendation: { type: Type.STRING },
+          loan_limit: { type: Type.STRING },
+          interest_rate: { type: Type.STRING },
+          risk_categories: {
+            type: Type.OBJECT,
+            properties: {
+              financial: { type: Type.NUMBER },
+              legal: { type: Type.NUMBER },
+              sector: { type: Type.NUMBER },
+              operational: { type: Type.NUMBER },
+              management: { type: Type.NUMBER }
+            },
+            required: ["financial", "legal", "sector", "operational", "management"]
+          },
+          cam_markdown: { type: Type.STRING }
+        },
+        required: ["risk_score", "recommendation", "loan_limit", "interest_rate", "risk_categories", "cam_markdown"]
+      }
+    }
+  });
+
+  return JSON.parse(response.text);
+}
+
 export async function generateCreditAppraisal(input: AppraisalInput) {
   const prompt = `
     You are a Senior AI Engineer, FinTech Architect, and Banking Credit Analyst.
